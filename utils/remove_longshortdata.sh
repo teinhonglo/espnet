@@ -9,6 +9,7 @@ maxframes=2000
 minframes=10
 maxchars=200
 minchars=0
+trans_type=char
 nlsyms=""
 no_feat=false
 
@@ -39,12 +40,12 @@ fi
 echo "extract utterances having less than $maxchars or more than $minchars characters"
 # counting number of chars. Use (NF - 1) instead of NF to exclude the utterance ID column
 if [ -z ${nlsyms} ]; then
-text2token.py -s 1 -n 1 ${sdir}/text \
+text2token.py -s 1 -n 1 --trans_type ${trans_type} ${sdir}/text \
     | awk -v maxchars="$maxchars" '{ if (NF - 1 < maxchars) print }' \
     | awk -v minchars="$minchars" '{ if (NF - 1 > minchars) print }' \
     | awk '{print $1}' > ${odir}/tmp/reclist2
 else
-text2token.py -l ${nlsyms} -s 1 -n 1 ${sdir}/text \
+text2token.py -l ${nlsyms} -s 1 -n 1 --trans_type ${trans_type} ${sdir}/text \
     | awk -v maxchars="$maxchars" '{ if (NF - 1 < maxchars) print }' \
     | awk -v minchars="$minchars" '{ if (NF - 1 > minchars) print }' \
     | awk '{print $1}' > ${odir}/tmp/reclist2
