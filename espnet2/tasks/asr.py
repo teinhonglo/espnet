@@ -4,7 +4,7 @@ from typing import Callable, Collection, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
-from typeguard import check_argument_types, check_return_type
+from typeguard import typechecked
 
 from espnet2.asr.ctc import CTC
 from espnet2.asr.decoder.abs_decoder import AbsDecoder
@@ -24,6 +24,7 @@ from espnet2.asr.decoder.transformer_decoder import (
 )
 from espnet2.asr.decoder.whisper_decoder import OpenAIWhisperDecoder
 from espnet2.asr.encoder.abs_encoder import AbsEncoder
+from espnet2.asr.encoder.avhubert_encoder import FairseqAVHubertEncoder
 from espnet2.asr.encoder.branchformer_encoder import BranchformerEncoder
 from espnet2.asr.encoder.conformer_encoder import ConformerEncoder
 from espnet2.asr.encoder.contextual_block_conformer_encoder import (
@@ -155,6 +156,7 @@ encoder_choices = ClassChoices(
         branchformer=BranchformerEncoder,
         whisper=OpenAIWhisperEncoder,
         e_branchformer=EBranchformerEncoder,
+        avhubert=FairseqAVHubertEncoder,
     ),
     type_check=AbsEncoder,
     default="rnn",
@@ -286,6 +288,18 @@ class ASRTask(AbsTask):
             help="Apply preprocessing to data or not",
         )
         group.add_argument(
+            "--use_lang_prompt",
+            type=str2bool,
+            default=False,
+            help="Use language id as prompt",
+        )
+        group.add_argument(
+            "--use_nlp_prompt",
+            type=str2bool,
+            default=False,
+            help="Use natural language phrases as prompt",
+        )
+        group.add_argument(
             "--token_type",
             type=str,
             default="bpe",
@@ -389,21 +403,19 @@ class ASRTask(AbsTask):
             class_choices.add_arguments(group)
 
     @classmethod
-    def build_collate_fn(
-        cls, args: argparse.Namespace, train: bool
-    ) -> Callable[
+    @typechecked
+    def build_collate_fn(cls, args: argparse.Namespace, train: bool) -> Callable[
         [Collection[Tuple[str, Dict[str, np.ndarray]]]],
         Tuple[List[str], Dict[str, torch.Tensor]],
     ]:
-        assert check_argument_types()
         # NOTE(kamo): int value = 0 is reserved by CTC-blank symbol
         return CommonCollateFn(float_pad_value=0.0, int_pad_value=-1)
 
     @classmethod
+    @typechecked
     def build_preprocess_fn(
         cls, args: argparse.Namespace, train: bool
     ) -> Optional[Callable[[str, Dict[str, np.array]], Dict[str, np.ndarray]]]:
-        assert check_argument_types()
         if args.use_preprocessor:
             try:
                 _ = getattr(args, "preprocessor")
@@ -424,30 +436,37 @@ class ASRTask(AbsTask):
                 g2p_type=args.g2p,
                 # NOTE(kamo): Check attribute existence for backward compatibility
                 rir_scp=args.rir_scp if hasattr(args, "rir_scp") else None,
-                rir_apply_prob=args.rir_apply_prob
-                if hasattr(args, "rir_apply_prob")
-                else 1.0,
+                rir_apply_prob=(
+                    args.rir_apply_prob if hasattr(args, "rir_apply_prob") else 1.0
+                ),
                 noise_scp=args.noise_scp if hasattr(args, "noise_scp") else None,
-                noise_apply_prob=args.noise_apply_prob
-                if hasattr(args, "noise_apply_prob")
-                else 1.0,
-                noise_db_range=args.noise_db_range
-                if hasattr(args, "noise_db_range")
-                else "13_15",
-                short_noise_thres=args.short_noise_thres
-                if hasattr(args, "short_noise_thres")
-                else 0.5,
-                speech_volume_normalize=args.speech_volume_normalize
-                if hasattr(args, "rir_scp")
-                else None,
-                aux_task_names=args.aux_ctc_tasks
-                if hasattr(args, "aux_ctc_tasks")
-                else None,
+                noise_apply_prob=(
+                    args.noise_apply_prob if hasattr(args, "noise_apply_prob") else 1.0
+                ),
+                noise_db_range=(
+                    args.noise_db_range if hasattr(args, "noise_db_range") else "13_15"
+                ),
+                short_noise_thres=(
+                    args.short_noise_thres
+                    if hasattr(args, "short_noise_thres")
+                    else 0.5
+                ),
+                speech_volume_normalize=(
+                    args.speech_volume_normalize if hasattr(args, "rir_scp") else None
+                ),
+                aux_task_names=(
+                    args.aux_ctc_tasks if hasattr(args, "aux_ctc_tasks") else None
+                ),
+                use_lang_prompt=(
+                    args.use_lang_prompt if hasattr(args, "use_lang_prompt") else None
+                ),
                 **args.preprocessor_conf,
+                use_nlp_prompt=(
+                    args.use_nlp_prompt if hasattr(args, "use_nlp_prompt") else None
+                ),
             )
         else:
             retval = None
-        assert check_return_type(retval)
         return retval
 
     @classmethod
@@ -468,15 +487,15 @@ class ASRTask(AbsTask):
         MAX_REFERENCE_NUM = 4
 
         retval = ["text_spk{}".format(n) for n in range(2, MAX_REFERENCE_NUM + 1)]
+        retval = retval + ["prompt"]
         retval = tuple(retval)
 
         logging.info(f"Optional Data Names: {retval }")
-        assert check_return_type(retval)
         return retval
 
     @classmethod
+    @typechecked
     def build_model(cls, args: argparse.Namespace) -> ESPnetASRModel:
-        assert check_argument_types()
         if isinstance(args.token_list, str):
             with open(args.token_list, encoding="utf-8") as f:
                 token_list = [line.rstrip() for line in f]
@@ -611,5 +630,4 @@ class ASRTask(AbsTask):
         if args.init is not None:
             initialize(model, args.init)
 
-        assert check_return_type(model)
         return model

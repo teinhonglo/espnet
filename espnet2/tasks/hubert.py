@@ -12,7 +12,7 @@ from typing import Callable, Collection, Dict, List, Optional, Tuple, Union
 import humanfriendly
 import numpy as np
 import torch
-from typeguard import check_argument_types, check_return_type
+from typeguard import typechecked
 
 from espnet2.asr.encoder.abs_encoder import AbsEncoder
 from espnet2.asr.encoder.hubert_encoder import (  # noqa: H301
@@ -269,13 +269,11 @@ class HubertTask(AbsTask):
             class_choices.add_arguments(group)
 
     @classmethod
-    def build_collate_fn(
-        cls, args: argparse.Namespace, train: bool
-    ) -> Callable[
+    @typechecked
+    def build_collate_fn(cls, args: argparse.Namespace, train: bool) -> Callable[
         [Collection[Tuple[str, Dict[str, np.ndarray]]]],
         Tuple[List[str], Dict[str, torch.Tensor]],
     ]:
-        assert check_argument_types()
 
         # default sampling rate is 16000
         fs = args.frontend_conf.get("fs", 16000)
@@ -310,10 +308,10 @@ class HubertTask(AbsTask):
         )
 
     @classmethod
+    @typechecked
     def build_preprocess_fn(
         cls, args: argparse.Namespace, train: bool
     ) -> Optional[Callable[[str, Dict[str, np.array]], Dict[str, np.ndarray]]]:
-        assert check_argument_types()
         if args.use_preprocessor:
             retval = CommonPreprocessor(
                 train=train,
@@ -324,27 +322,17 @@ class HubertTask(AbsTask):
                 text_cleaner=args.cleaner,
                 g2p_type=args.g2p,
                 # NOTE(kamo): Check attribute existence for backward compatibility
-                rir_scp=args.rir_scp if hasattr(args, "rir_scp") else None,
-                rir_apply_prob=args.rir_apply_prob
-                if hasattr(args, "rir_apply_prob")
-                else 1.0,
-                noise_scp=args.noise_scp if hasattr(args, "noise_scp") else None,
-                noise_apply_prob=args.noise_apply_prob
-                if hasattr(args, "noise_apply_prob")
-                else 1.0,
-                noise_db_range=args.noise_db_range
-                if hasattr(args, "noise_db_range")
-                else "13_15",
-                short_noise_thres=args.short_noise_thres
-                if hasattr(args, "short_noise_thres")
-                else 0.5,
-                speech_volume_normalize=args.speech_volume_normalize
-                if hasattr(args, "rir_scp")
-                else None,
+                rir_scp=getattr(args, "rir_scp", None),
+                rir_apply_prob=getattr(args, "rir_apply_prob", 1.0),
+                noise_scp=getattr(args, "noise_scp", None),
+                noise_apply_prob=getattr(args, "noise_apply_prob", 1.0),
+                noise_db_range=getattr(args, "noise_db_range", "13_15"),
+                short_noise_thres=getattr(args, "short_noise_thres", 0.5),
+                speech_volume_normalize=getattr(args, "rir_scp", None),
+                **getattr(args, "preprocessor_conf", {}),
             )
         else:
             retval = None
-        assert check_return_type(retval)
         return retval
 
     @classmethod
@@ -363,14 +351,13 @@ class HubertTask(AbsTask):
         cls, train: bool = True, inference: bool = False
     ) -> Tuple[str, ...]:
         retval = ()
-        assert check_return_type(retval)
         return retval
 
     @classmethod
+    @typechecked
     def build_model(
         cls, args: argparse.Namespace
     ) -> Union[HubertPretrainModel, TorchAudioHubertPretrainModel]:
-        assert check_argument_types()
         if isinstance(args.token_list, str):
             with open(args.token_list, encoding="utf-8") as f:
                 token_list = [line.rstrip() for line in f]
@@ -447,5 +434,4 @@ class HubertTask(AbsTask):
         if args.init is not None:
             initialize(model, args.init)
 
-        assert check_return_type(model)
         return model
