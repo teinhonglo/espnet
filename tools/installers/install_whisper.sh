@@ -48,6 +48,7 @@ echo "cuda_version=${cuda_version}"
 
 if "${torch_17_plus}" && "${python_38_plus}"; then
     python -m pip install openai-whisper==20230308
+#    python -m pip install openai-whisper
 else
     echo "[ERROR] whisper does not work with pytorch<1.7.0, python<3.8"
 fi

@@ -5,6 +5,20 @@ set -e
 set -u
 set -o pipefail
 
+
+#Choose 台文漢字 or 台羅 for training (zh en )
+traing_data="ch"
+if [ "$traing_data" = "ch" ]; then
+  nbpe=2447
+  lang="zh"
+  local_data_opts="textc"
+fi
+if [ "$traing_data" = "en" ]; then
+  nbpe=30
+  lang="en"
+  local_data_opts="texts"
+fi
+
 all_set=all
 train_set=train
 valid_set=dev
@@ -25,12 +39,12 @@ speed_perturb_factors="0.9 1.0 1.1"
 ./asr.sh \
     --nj 32 \
     --inference_nj 32 \
-    --ngpu 2 \
-    --lang en \
+    --ngpu 8 \
+    --lang ${lang} \
     --audio_format wav \
     --feats_type raw \
     --token_type bpe \
-    --nbpe 30 \
+    --nbpe ${nbpe} \
     --use_lm ${use_lm}                                 \
     --use_word_lm ${use_wordlm}                        \
     --lm_config "${lm_config}"                         \
@@ -46,4 +60,5 @@ speed_perturb_factors="0.9 1.0 1.1"
     --lm_train_text "data/${train_set}/text" "$@" \
     --bpe_train_text "data/${train_set}/text" "$@" \
     --feats_normalize uttmvn \
-    --asr_args "--max_epoch 100"
+    --asr_args "--max_epoch 1" \
+    --local_data_opts ${local_data_opts}

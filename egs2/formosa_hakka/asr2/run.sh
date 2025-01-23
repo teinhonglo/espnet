@@ -5,10 +5,12 @@ set -e
 set -u
 set -o pipefail
 
+all_set=all
 train_set=train
 valid_set=dev
 test_sets="dev test"
 
+#asr_config=conf/train_asr_transformer.yaml
 asr_config=conf/train_asr_branchformer.yaml
 inference_config=conf/decode_asr_branchformer.yaml
 
@@ -23,11 +25,12 @@ speed_perturb_factors="0.9 1.0 1.1"
 ./asr.sh \
     --nj 32 \
     --inference_nj 32 \
-    --ngpu 1 \
-    --lang zh \
-    --audio_format "wav" \
+    --ngpu 2 \
+    --lang en \
+    --audio_format wav \
     --feats_type raw \
-    --token_type char \
+    --token_type bpe \
+    --nbpe 30 \
     --use_lm ${use_lm}                                 \
     --use_word_lm ${use_wordlm}                        \
     --lm_config "${lm_config}"                         \
@@ -40,4 +43,7 @@ speed_perturb_factors="0.9 1.0 1.1"
     --asr_speech_fold_length 512 \
     --asr_text_fold_length 150 \
     --lm_fold_length 150 \
-    --lm_train_text "data/${train_set}/text" "$@"
+    --lm_train_text "data/${train_set}/text" "$@" \
+    --bpe_train_text "data/${train_set}/text" "$@" \
+    --feats_normalize uttmvn \
+    --asr_args "--max_epoch 100"

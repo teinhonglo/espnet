@@ -1,116 +1,68 @@
 #!/usr/bin/env bash
-# Set bash to 'debug' mode, it will exit on :
-# -e 'error', -u 'undefined variable', -o ... 'error in pipeline', -x 'print commands',
-set -e
-set -u
-set -o pipefail
 
-log() {
-    local fname=${BASH_SOURCE[1]##*/}
-    echo -e "$(date '+%Y-%m-%dT%H:%M:%S') (${fname}:${BASH_LINENO[0]}:${FUNCNAME[1]}) $*"
-}
-help_message=$(cat << EOF
-Usage: $0
-
-Options:
-    --remove_archive (bool): true or false
-      With remove_archive=True, the archives will be removed after being successfully downloaded and un-tarred.
-EOF
-)
-SECONDS=0
-
-# Data preparation related
-
-log "$0 $*"
-
-
-. ./utils/parse_options.sh
-
-. ./db.sh
 . ./path.sh
-. ./cmd.sh
 
+mkdir -p data/all
+mkdir -p downloads
+cd downloads
 
-if [ $# -gt 1 ]; then
-  log "${help_message}"
-  exit 2
+if [ ! -f SuiSiann-0.2.1.tar ]; then
+	wget https://tongan-puntiunn.ithuan.tw/SuiSiann/SuiSiann-0.2.1.tar
+	tar vxf SuiSiann-0.2.1.tar
 fi
 
-
-if [ -z "${HAKKA}" ]; then
-  log "Error: \$HAKKA is not set in db.sh."
-  exit 2
+if [ ! -f musan.tar.gz ]; then
+	wget https://www.openslr.org/resources/17/musan.tar.gz
+	tar vxfz musan.tar.gz
 fi
 
-
-# To absolute path
-HAKKA=$(cd ${HAKKA}; pwd)
-hakka_audio_dir=${HAKKA}/data_hakka/wav
-hakka_text=${HAKKA}/data_hakka/transcript/hakka_transcript.txt
-
-log "check downloads/data_hakka/wav"
-if [ ! -d "${hakka_audio_dir}" ]; then
-    echo "Please put audio data to ${hakka_audio_dir}"
-    exit 2
-fi
-log "check downloads/data_hakka/transcript/hakka_transcript.txt"
-if [ ! -f "${hakka_text}" ]; then
-    echo "Please put hakka_transcript.txt to ${hakka_text}"
-    exit 2
+if [ ! -f rirs_noises.zip ]; then
+	wget https://www.openslr.org/resources/28/rirs_noises.zip
+	unzip rirs_noises.zip
 fi
 
-log "Data Preparation"
-train_dir=data/local/train
-dev_dir=data/local/dev
-test_dir=data/local/test
-tmp_dir=data/local/tmp
+if [ ! -f rirs_noises.zip ]; then
+	https://github.com/karoldvl/ESC-50/archive/master.zip
+	unzip master.zip
+fi
 
-mkdir -p $train_dir
-mkdir -p $dev_dir
-mkdir -p $test_dir
-mkdir -p $tmp_dir
+cd ..
 
-# find wav audio file for train, dev and test resp.
-find $hakka_audio_dir -iname "*.wav" > $tmp_dir/wav.flist
-n=$(wc -l < $tmp_dir/wav.flist)
-[ $n -ne 141925 ] && \
-  log Warning: expected 141925 data data files, found $n
+python local/SuiSiann.py
+cp data/all/texts data/all/text
+utils/fix_data_dir.sh data/all
 
-grep -i "wav/train" $tmp_dir/wav.flist > $train_dir/wav.flist || exit 1;
-grep -i "wav/dev" $tmp_dir/wav.flist > $dev_dir/wav.flist || exit 1;
-grep -i "wav/test" $tmp_dir/wav.flist > $test_dir/wav.flist || exit 1;
+# Assuming all data is in a directory called 'data/all'
+cd data/all
 
-rm -r $tmp_dir
+# Shuffle the utterance list to ensure randomness
+awk '{print $1}' utt2spk | shuf > shuffled_utterances.list
 
-# Transcriptions preparation
-for dir in $train_dir $dev_dir $test_dir; do
-  log Preparing $dir transcriptions
-  sed -e 's/\.wav//' $dir/wav.flist | awk -F '/' '{print $NF}' > $dir/utt.list
-  sed -e 's/\.wav//' $dir/wav.flist | awk -F '/' '{i=NF-1;printf("%s %s\n",$NF,$i)}' > $dir/utt2spk_all
-  paste -d' ' $dir/utt.list $dir/wav.flist > $dir/wav.scp_all
-  utils/filter_scp.pl -f 1 $dir/utt.list $hakka_text > $dir/transcripts.txt
-  awk '{print $1}' $dir/transcripts.txt > $dir/utt.list
-  utils/filter_scp.pl -f 1 $dir/utt.list $dir/utt2spk_all | sort -u > $dir/utt2spk
-  utils/filter_scp.pl -f 1 $dir/utt.list $dir/wav.scp_all | sort -u > $dir/wav.scp
-  sort -u $dir/transcripts.txt > $dir/text
-  utils/utt2spk_to_spk2utt.pl $dir/utt2spk > $dir/spk2utt
-done
+# Count total utterances and calculate splits
+total_utterances=$(cat shuffled_utterances.list | wc -l)
+echo total_utterances=$total_utterances
+num_train=$(echo "$total_utterances * 0.9 / 1" | bc)
+num_dev=$(echo "($total_utterances - $num_train) / 2 / 1" | bc)
+num_test=$num_dev
+echo "num_train, num_dev, num_test=$num_train, $num_dev, $num_test"
 
-mkdir -p data/train data/dev data/test
+# Create utterance subsets
+head -n $num_train shuffled_utterances.list > train_utterances.list
+tail -n +$((num_train + 1)) shuffled_utterances.list | head -n $num_dev > dev_utterances.list
+tail -n $num_test shuffled_utterances.list > test_utterances.list
 
-for f in spk2utt utt2spk wav.scp text; do
-  cp $train_dir/$f data/train/$f || exit 1;
-  cp $dev_dir/$f data/dev/$f || exit 1;
-  cp $test_dir/$f data/test/$f || exit 1;
-done
+# Create training, development, and testing subsets
+cd ../../
 
-# remove space in text
-for x in train dev test; do
-  cp data/${x}/text data/${x}/text.org
-#  paste -d " " <(cut -f 1 -d" " data/${x}/text.org) <(cut -f 2- -d" " data/${x}/text.org | tr -d " ") \
-#      > data/${x}/text
-  paste data/${x}/text
-  rm data/${x}/text.org
-done
+# Function to create data subsets
+create_subset() {
+    subset=$1
+    utterances_list=$2
+    mkdir -p data/$subset
+    utils/subset_data_dir.sh --utt-list data/all/$utterances_list data/all data/$subset
+    utils/fix_data_dir.sh data/$subset
+}
 
-log "Successfully finished. [elapsed=${SECONDS}s]"
+create_subset "train" "train_utterances.list"
+create_subset "dev" "dev_utterances.list"
+create_subset "test" "test_utterances.list"

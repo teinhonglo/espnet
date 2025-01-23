@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+train_lang=$1
 . ./path.sh
 
 mkdir -p data/all
@@ -9,6 +9,7 @@ cd downloads
 if [ ! -f SuiSiann-0.2.1.tar ]; then
 	wget https://tongan-puntiunn.ithuan.tw/SuiSiann/SuiSiann-0.2.1.tar
 	tar vxf SuiSiann-0.2.1.tar
+	python ../local/48kto16k.py
 fi
 
 if [ ! -f musan.tar.gz ]; then
@@ -21,15 +22,24 @@ if [ ! -f rirs_noises.zip ]; then
 	unzip rirs_noises.zip
 fi
 
-if [ ! -f rirs_noises.zip ]; then
+if [ ! -f ESC-50-master.zip ]; then
 	https://github.com/karoldvl/ESC-50/archive/master.zip
-	unzip master.zip
+	unzip ESC-50-master.zip
 fi
 
 cd ..
 
 python local/SuiSiann.py
-cp data/all/texts data/all/text
+
+if [ "$train_lang" = "texts" ]; then
+    echo "台羅"
+	cp data/all/texts data/all/text #move data
+fi
+if [ "$train_lang" = "textc" ]; then
+    echo "台文漢字"
+	cp data/all/textc data/all/text #move data
+fi
+
 utils/fix_data_dir.sh data/all
 
 # Assuming all data is in a directory called 'data/all'

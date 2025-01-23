@@ -18,6 +18,7 @@ tmp*
 __pycache__/
 check_autopep8
 .coverage
+.coverage.*
 htmlcov
 coverage.xml*
 test_utils/bats-core/
@@ -102,3 +103,5 @@ tools/ffmpeg-*-static
 tools/ffmpeg-release
 tools/ffmpeg-release-*.tar.xz
 tools/Miniconda3-latest-*.sh
+tools/Miniforge3-*.sh
+tools/condarc
